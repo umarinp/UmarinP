@@ -347,7 +347,7 @@ Player.prototype.moveY = function(step, level, keys) {
       this.pos = newPos; 
     }
     if (obstacle = "lava") {
-      this.pos = vector(10,10)
+      this.pos = pos.plus(new Vector(6,18));
     }
 
 };
