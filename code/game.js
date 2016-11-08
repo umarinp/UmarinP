@@ -2,8 +2,8 @@
 var actorChars = {
   "@": Player,
   "o": Coin, // A coin will wobble up and down
-  "=": Lava, "|": Lava, "v": Lava  
-  "y": Floater
+  "=": Lava, "|": Lava, "v": Lava, 
+  "#": Enemy,
 };
 
 function Level(plan) {
@@ -28,7 +28,7 @@ function Level(plan) {
       // Get the type from that character in the string. It can be 'x', '!' or ' '
       // If the character is ' ', assign null.
 
-      var ch = line[x], fieldType = null, y = floater;
+      var ch = line[x], fieldType = null;
       var Actor = actorChars[ch];
       // Use if and else to handle the three cases
       if (Actor)
@@ -39,9 +39,11 @@ function Level(plan) {
       // Because there is a third case (space ' '), use an "else if" instead of "else"
       else if (ch == "!")
         fieldType = "lava";
-      // for character y
-      else if (ch == "y")
-      	fieldType = "floater"
+
+      else if (ch == "#")
+        fieldType = "enemy"
+
+
 
       // "Push" the fieldType, which is a string, onto the gridLine array (at the end).
       gridLine.push(fieldType);
@@ -79,7 +81,7 @@ Vector.prototype.times = function(factor) {
 // A Player has a size, speed and position.
 function Player(pos) {
   this.pos = pos.plus(new Vector(0, -0.5));
-  this.size = new Vector(0.8, 1.5);
+  this.size = new Vector(1.5, 1.5);
   this.speed = new Vector(0, 0);
 }
 Player.prototype.type = "player";
@@ -92,6 +94,7 @@ function Coin(pos) {
   this.wobble = Math.random() * Math.PI * 2;
 }
 Coin.prototype.type = "coin";
+
 
 // Lava is initialized based on the character, but otherwise has a
 // size and position
@@ -111,6 +114,17 @@ function Lava(pos, ch) {
   }
 }
 Lava.prototype.type = "lava";
+
+
+function Enemy(pos, ch) {
+  this.pos = pos;
+  this.size = new Vector(1.5, 1.5);
+  if (ch == "#") {
+    
+    this.speed = new Vector(2, 0);
+  }
+}
+Enemy.prototype.type = "enemy";
 
 // Helper function to easily create an element of a type provided 
 function elt(name, className) {
@@ -287,6 +301,16 @@ Lava.prototype.act = function(step, level) {
     this.speed = this.speed.times(-1);
 };
 
+Enemy.prototype.act = function(step, level) {
+  var newPos = this.pos.plus(this.speed.times(step));
+  if (!level.obstacleAt(newPos, this.size))
+    this.pos = newPos;
+  else if (this.repeatPos)
+    this.pos = this.repeatPos;
+  else
+    this.speed = this.speed.times(-1);
+};
+
 
 var maxStep = 0.05;
 
@@ -307,49 +331,52 @@ Coin.prototype.act = function(step) {
   var wobblePos = Math.sin(this.wobble) * wobbleDist;
   this.pos = this.basePos.plus(new Vector(0, wobblePos));
 };
+
+
+
 
 var maxStep = 0.05;
 
 var playerXSpeed = 7;
 
-PPlayer.prototype.moveX = function(step, level, keys) {
+Player.prototype.moveX = function(step, level, keys) {
   this.speed.x = 0;
   if (keys.left) this.speed.x -= playerXSpeed;
   if (keys.right) this.speed.x += playerXSpeed;
 
   var motion = new Vector(this.speed.x * step, 0);
+  // Find out where the player character will be in this frame
   var newPos = this.pos.plus(motion);
-  //check to see if there is something in our way
-  var obstacle = level.obstacleAt(new Pos, this.size);
-  //use info to move if not a wall
-  if (obstacle != "wall")
-  this.pos = newPos;
+  // Find if there's an obstacle there
+  var obstacle = level.obstacleAt(newPos, this.size);
+  // Handle lava by calling playerTouched
+  if (obstacle)
+    level.playerTouched(obstacle);
+  else
+    // Move if there's not an obstacle there.
+    this.pos = newPos;
 };
 
 var gravity = 25;
-var jumpSpeed = 20;
-var playerYSpeed = 7;
+var jumpSpeed = 18 ;
 
 Player.prototype.moveY = function(step, level, keys) {
-  //constantly add gravity
-  this.speed.y += step * gravity;
+  // Accelerate player downward (always)
+  this.speed.y += step * gravity;;
   var motion = new Vector(0, this.speed.y * step);
   var newPos = this.pos.plus(motion);
-  //check to see if falling or on the ground
   var obstacle = level.obstacleAt(newPos, this.size);
-    if (obstacle) {
-      if (keys.up && this.speed.y > 0) 
-        this.speed.y -= playerYSpeed;
-      //don't want player to fall through the ground
-      else
-        this.speed.y = 0;
-    } else {
-      this.pos = newPos; 
-    }
-    if (obstacle = "lava") {
-      this.pos = pos.plus(new Vector(6,18));
-    }
-
+  // The floor is also an obstacle -- only allow players to 
+  // jump if they are touching some obstacle.
+  if (obstacle) {
+    level.playerTouched(obstacle);
+    if (keys.up && this.speed.y > 0)
+      this.speed.y = -jumpSpeed;
+    else
+      this.speed.y = 0;
+  } else {
+    this.pos = newPos;
+  }
 };
 
 Player.prototype.act = function(step, level, keys) {
@@ -374,7 +401,10 @@ Level.prototype.playerTouched = function(type, actor) {
   if (type == "lava" && this.status == null) {
     this.status = "lost";
     this.finishDelay = 1;
-  } else if (type == "coin") {
+  } else if (type == "enemy" && this.status == null) {
+    this.status = "lost";
+    this.finishDelay = 1;
+  }else if (type == "coin") {
     this.actors = this.actors.filter(function(other) {
       return other != actor;
     });
